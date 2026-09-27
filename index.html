@@ -1,0 +1,2301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+
+<meta name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+
+<title>FruitSlash</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: Arial, sans-serif;
+}
+
+canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  color: white;
+}
+
+#topbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 15px;
+  font-size: 18px;
+  font-weight: bold;
+  text-shadow: 0 2px 5px #000;
+}
+
+.badge {
+  background: rgba(0,0,0,.5);
+  padding: 9px 13px;
+  border-radius: 14px;
+  backdrop-filter: blur(5px);
+}
+
+#status {
+  position: fixed;
+  left: 50%;
+  top: 15px;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,.5);
+  padding: 8px 13px;
+  border-radius: 12px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0,0,0,.45);
+  pointer-events: auto;
+}
+
+.card {
+  width: min(90vw,430px);
+  padding: 28px;
+  border-radius: 24px;
+  text-align: center;
+  background: rgba(10,15,25,.9);
+  border: 1px solid rgba(255,255,255,.15);
+  box-shadow: 0 20px 70px rgba(0,0,0,.55);
+  color: white;
+}
+
+h1 {
+  font-size: 46px;
+  margin: 0 0 10px;
+}
+
+h2 {
+  margin-top: 0;
+}
+
+p {
+  line-height: 1.5;
+  opacity: .9;
+}
+
+button {
+  border: none;
+  border-radius: 16px;
+  padding: 14px 25px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  background: white;
+  color: #111;
+}
+
+button:active {
+  transform: scale(.97);
+}
+
+select {
+  width: 100%;
+  padding: 12px;
+  margin: 12px 0;
+  border-radius: 12px;
+  font-size: 16px;
+}
+
+#cameraPanel {
+  display: none;
+}
+
+#error,
+#error2 {
+  color: #ff8c8c;
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+#countdown {
+  display: none;
+  position: fixed;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 100px;
+  font-weight: 900;
+  text-shadow: 0 5px 30px black;
+  pointer-events: none;
+}
+
+#gameOverScreen {
+  display: none;
+}
+
+#gameOverScreen h2 {
+  font-size: 38px;
+}
+
+.small {
+  font-size: 13px;
+  opacity: .7;
+}
+</style>
+</head>
+
+<body>
+
+<video
+  id="camera"
+  autoplay
+  playsinline
+  muted
+  style="display:none">
+</video>
+
+<canvas id="canvas"></canvas>
+
+<div id="ui">
+
+  <div id="topbar">
+
+    <div class="badge">
+      🍉 Score:
+      <span id="score">0</span>
+    </div>
+
+    <div class="badge">
+      🔥 Combo:
+      <span id="combo">0</span>
+    </div>
+
+    <div class="badge">
+      ❤️
+      <span id="lives">3</span>
+    </div>
+
+  </div>
+
+  <div id="status">
+    Camera starting…
+  </div>
+
+</div>
+
+
+<!-- START SCREEN -->
+
+<div id="startScreen" class="screen">
+
+  <div class="card">
+
+    <h1>🍉 FruitSlash</h1>
+
+    <p>
+      Use the <b>index finger of either hand</b>
+      to slice the fruits.
+    </p>
+
+    <p class="small">
+      You can use both hands at the same time.
+    </p>
+
+    <button id="startButton">
+      Start Game
+    </button>
+
+    <div id="error"></div>
+
+  </div>
+
+</div>
+
+
+<!-- CAMERA SELECTION -->
+
+<div id="cameraPanel" class="screen">
+
+  <div class="card">
+
+    <h2>Select Camera</h2>
+
+    <p>
+      Choose the camera you want to use.
+    </p>
+
+    <select id="cameraSelect"></select>
+
+    <button id="cameraConfirm">
+      Use This Camera
+    </button>
+
+    <div id="error2"></div>
+
+  </div>
+
+</div>
+
+
+<!-- COUNTDOWN -->
+
+<div id="countdown">
+
+  <span id="countdownText">
+    3
+  </span>
+
+</div>
+
+
+<!-- GAME OVER -->
+
+<div id="gameOverScreen" class="screen">
+
+  <div class="card">
+
+    <h2>
+      Game Over 💥
+    </h2>
+
+    <p>
+      Final Score:
+      <b id="finalScore">0</b>
+    </p>
+
+    <button id="restartButton">
+      Play Again
+    </button>
+
+  </div>
+
+</div>
+
+
+<script type="module">
+
+/* =====================================================
+   MEDIAPIPE
+===================================================== */
+
+import {
+  FilesetResolver,
+  HandLandmarker
+} from
+"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs";
+
+
+/* =====================================================
+   ELEMENTS
+===================================================== */
+
+const canvas =
+  document.getElementById("canvas");
+
+const ctx =
+  canvas.getContext("2d", {
+    alpha: false
+  });
+
+const camera =
+  document.getElementById("camera");
+
+const scoreEl =
+  document.getElementById("score");
+
+const comboEl =
+  document.getElementById("combo");
+
+const livesEl =
+  document.getElementById("lives");
+
+const statusEl =
+  document.getElementById("status");
+
+const startScreen =
+  document.getElementById("startScreen");
+
+const startButton =
+  document.getElementById("startButton");
+
+const cameraPanel =
+  document.getElementById("cameraPanel");
+
+const cameraSelect =
+  document.getElementById("cameraSelect");
+
+const cameraConfirm =
+  document.getElementById("cameraConfirm");
+
+const errorEl =
+  document.getElementById("error");
+
+const error2 =
+  document.getElementById("error2");
+
+const countdown =
+  document.getElementById("countdown");
+
+const countdownText =
+  document.getElementById("countdownText");
+
+const gameOverScreen =
+  document.getElementById("gameOverScreen");
+
+const finalScore =
+  document.getElementById("finalScore");
+
+const restartButton =
+  document.getElementById("restartButton");
+
+
+/* =====================================================
+   SCREEN
+===================================================== */
+
+let W = window.innerWidth;
+let H = window.innerHeight;
+
+let dpr =
+  Math.min(
+    window.devicePixelRatio || 1,
+    2
+  );
+
+
+function resize() {
+
+  W = window.innerWidth;
+  H = window.innerHeight;
+
+  dpr =
+    Math.min(
+      window.devicePixelRatio || 1,
+      2
+    );
+
+  canvas.width =
+    Math.floor(W * dpr);
+
+  canvas.height =
+    Math.floor(H * dpr);
+
+  canvas.style.width =
+    W + "px";
+
+  canvas.style.height =
+    H + "px";
+
+  ctx.setTransform(
+    dpr,
+    0,
+    0,
+    dpr,
+    0,
+    0
+  );
+}
+
+
+window.addEventListener(
+  "resize",
+  resize
+);
+
+resize();
+
+
+/* =====================================================
+   CAMERA LAYOUT
+===================================================== */
+
+function getCameraLayout() {
+
+  const videoWidth =
+    camera.videoWidth || 1280;
+
+  const videoHeight =
+    camera.videoHeight || 720;
+
+  const videoRatio =
+    videoWidth / videoHeight;
+
+  const screenRatio =
+    W / H;
+
+  let drawWidth;
+  let drawHeight;
+  let offsetX;
+  let offsetY;
+
+
+  if (
+    videoRatio > screenRatio
+  ) {
+
+    drawHeight = H;
+
+    drawWidth =
+      H * videoRatio;
+
+    offsetX =
+      (W - drawWidth) / 2;
+
+    offsetY = 0;
+
+  } else {
+
+    drawWidth = W;
+
+    drawHeight =
+      W / videoRatio;
+
+    offsetX = 0;
+
+    offsetY =
+      (H - drawHeight) / 2;
+  }
+
+
+  return {
+    drawWidth,
+    drawHeight,
+    offsetX,
+    offsetY
+  };
+}
+
+
+/* =====================================================
+   DRAW CAMERA
+===================================================== */
+
+function drawCamera() {
+
+  ctx.fillStyle = "#000";
+
+  ctx.fillRect(
+    0,
+    0,
+    W,
+    H
+  );
+
+
+  if (
+    camera.readyState < 2 ||
+    !camera.videoWidth
+  ) {
+    return;
+  }
+
+
+  const {
+    drawWidth,
+    drawHeight,
+    offsetX,
+    offsetY
+  } =
+    getCameraLayout();
+
+
+  ctx.save();
+
+
+  /*
+     Mirror the camera.
+  */
+
+  ctx.translate(
+    W,
+    0
+  );
+
+  ctx.scale(
+    -1,
+    1
+  );
+
+
+  const mirroredX =
+    W -
+    offsetX -
+    drawWidth;
+
+
+  ctx.drawImage(
+    camera,
+    mirroredX,
+    offsetY,
+    drawWidth,
+    drawHeight
+  );
+
+
+  ctx.restore();
+}
+
+
+/* =====================================================
+   MEDIAPIPE → SCREEN
+===================================================== */
+
+function videoPointToScreen(
+  x,
+  y
+) {
+
+  const {
+    drawWidth,
+    drawHeight,
+    offsetX,
+    offsetY
+  } =
+    getCameraLayout();
+
+
+  return {
+
+    x:
+      offsetX +
+      (1 - x) *
+      drawWidth,
+
+    y:
+      offsetY +
+      y *
+      drawHeight
+
+  };
+}
+
+
+/* =====================================================
+   CAMERA
+===================================================== */
+
+let stream = null;
+
+let cameras = [];
+
+let selectedCameraId = "";
+
+
+async function getCameras() {
+
+  try {
+
+    const temporaryStream =
+      await navigator.mediaDevices
+        .getUserMedia({
+          video: true,
+          audio: false
+        });
+
+
+    temporaryStream
+      .getTracks()
+      .forEach(
+        track =>
+          track.stop()
+      );
+
+
+    const devices =
+      await navigator.mediaDevices
+        .enumerateDevices();
+
+
+    cameras =
+      devices.filter(
+        device =>
+          device.kind ===
+          "videoinput"
+      );
+
+
+    return cameras;
+
+  } catch (error) {
+
+    throw new Error(
+      "Camera permission was blocked. Allow camera access in Chrome and reload the page."
+    );
+  }
+}
+
+
+/* =====================================================
+   BEST CAMERA
+===================================================== */
+
+function chooseBestCamera(
+  list
+) {
+
+  const bad =
+    /phone|android|mobile|phone link|link to windows|droidcam|iriun|epoccam|smartphone/i;
+
+  const good =
+    /integrated|built.?in|webcam|laptop|hd camera|asus|internal|facetime/i;
+
+
+  const valid =
+    list.filter(
+      camera =>
+        !bad.test(
+          camera.label || ""
+        )
+    );
+
+
+  if (!valid.length) {
+    return list[0];
+  }
+
+
+  return [...valid].sort(
+    (a, b) => {
+
+      const aScore =
+        good.test(
+          a.label || ""
+        )
+          ? 1
+          : 0;
+
+      const bScore =
+        good.test(
+          b.label || ""
+        )
+          ? 1
+          : 0;
+
+      return bScore - aScore;
+
+    }
+  )[0];
+}
+
+
+/* =====================================================
+   START CAMERA
+===================================================== */
+
+async function startSpecificCamera(
+  deviceId
+) {
+
+  if (stream) {
+
+    stream
+      .getTracks()
+      .forEach(
+        track =>
+          track.stop()
+      );
+  }
+
+
+  stream =
+    await navigator.mediaDevices
+      .getUserMedia({
+
+        video: {
+
+          deviceId: {
+            exact: deviceId
+          },
+
+          width: {
+            ideal: 1280
+          },
+
+          height: {
+            ideal: 720
+          },
+
+          frameRate: {
+            ideal: 30,
+            max: 60
+          }
+
+        },
+
+        audio: false
+
+      });
+
+
+  camera.srcObject =
+    stream;
+
+
+  await camera.play();
+
+
+  if (!camera.videoWidth) {
+
+    await new Promise(
+      resolve => {
+
+        camera.addEventListener(
+          "loadedmetadata",
+          resolve,
+          {
+            once: true
+          }
+        );
+
+      }
+    );
+  }
+
+
+  statusEl.textContent =
+    "Camera ready • Use either hand";
+}
+
+
+/* =====================================================
+   HAND TRACKING
+===================================================== */
+
+let handLandmarker = null;
+
+
+async function setupHandLandmarker() {
+
+  statusEl.textContent =
+    "Loading hand tracking…";
+
+
+  const vision =
+    await FilesetResolver
+      .forVisionTasks(
+
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+
+      );
+
+
+  handLandmarker =
+    await HandLandmarker
+      .createFromOptions(
+        vision,
+        {
+
+          baseOptions: {
+
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+
+            delegate: "CPU"
+
+          },
+
+
+          runningMode: "VIDEO",
+
+          /*
+             IMPORTANT:
+             Track TWO hands.
+          */
+
+          numHands: 2,
+
+          minHandDetectionConfidence:
+            0.3,
+
+          minHandPresenceConfidence:
+            0.3,
+
+          minTrackingConfidence:
+            0.3
+
+        }
+      );
+
+
+  statusEl.textContent =
+    "Both hands ready ✋🤚";
+}
+
+
+/* =====================================================
+   BOTH FINGERS
+===================================================== */
+
+/*
+   Instead of one finger object,
+   we keep an array containing
+   the index fingertip of every
+   detected hand.
+*/
+
+let fingers = [];
+
+
+let lastVideoTime = -1;
+
+
+/* =====================================================
+   DETECT BOTH HANDS
+===================================================== */
+
+function detectHands(now) {
+
+  if (
+    !handLandmarker ||
+    camera.readyState < 2 ||
+    !camera.videoWidth
+  ) {
+    return;
+  }
+
+
+  if (
+    camera.currentTime ===
+    lastVideoTime
+  ) {
+    return;
+  }
+
+
+  lastVideoTime =
+    camera.currentTime;
+
+
+  try {
+
+    const results =
+      handLandmarker
+        .detectForVideo(
+          camera,
+          now
+        );
+
+
+    const detectedFingers =
+      [];
+
+
+    if (
+      results.landmarks &&
+      results.landmarks.length
+    ) {
+
+      /*
+         Loop through BOTH hands.
+      */
+
+      for (
+        let handIndex = 0;
+        handIndex <
+        results.landmarks.length;
+        handIndex++
+      ) {
+
+        const landmarks =
+          results.landmarks[
+            handIndex
+          ];
+
+
+        /*
+           Landmark 8 =
+           index fingertip.
+        */
+
+        const tip =
+          landmarks[8];
+
+
+        const point =
+          videoPointToScreen(
+            tip.x,
+            tip.y
+          );
+
+
+        detectedFingers.push({
+
+          x:
+            point.x,
+
+          y:
+            point.y,
+
+          hand:
+            handIndex
+
+        });
+      }
+    }
+
+
+    fingers =
+      detectedFingers;
+
+  } catch (error) {
+
+    console.warn(
+      "Hand detection:",
+      error
+    );
+  }
+}
+
+
+/* =====================================================
+   FRUITS
+===================================================== */
+
+const fruitTypes = [
+
+  {
+    emoji: "🍎",
+    points: 10
+  },
+
+  {
+    emoji: "🍊",
+    points: 12
+  },
+
+  {
+    emoji: "🍉",
+    points: 15
+  },
+
+  {
+    emoji: "🍌",
+    points: 12
+  },
+
+  {
+    emoji: "🍓",
+    points: 14
+  },
+
+  {
+    emoji: "🥝",
+    points: 13
+  },
+
+  {
+    emoji: "🍍",
+    points: 18
+  },
+
+  {
+    emoji: "🥥",
+    points: 16
+  }
+
+];
+
+
+let fruits = [];
+
+let particles = [];
+
+let trails = [];
+
+
+let score = 0;
+
+let combo = 0;
+
+let lives = 3;
+
+let playing = false;
+
+let spawnTimer = 0;
+
+let nextSpawn = 700;
+
+let bombChance = 0.10;
+
+
+/* =====================================================
+   RANDOM
+===================================================== */
+
+function rand(
+  min,
+  max
+) {
+
+  return min +
+    Math.random() *
+    (max - min);
+}
+
+
+/* =====================================================
+   SPAWN FRUIT
+===================================================== */
+
+function spawnFruit() {
+
+  const isBomb =
+    Math.random() <
+    bombChance;
+
+
+  const size =
+    rand(
+      72,
+      94
+    );
+
+
+  const x =
+    rand(
+      size,
+      W - size
+    );
+
+
+  /*
+     HIGHER START POSITION
+
+     Fruits now launch from
+     below the screen but with
+     significantly stronger upward
+     velocity.
+  */
+
+  const y =
+    H + size;
+
+
+  const fruit =
+    fruitTypes[
+      Math.floor(
+        Math.random() *
+        fruitTypes.length
+      )
+    ];
+
+
+  fruits.push({
+
+    x: x,
+
+    y: y,
+
+    vx:
+      rand(
+        -170,
+        170
+      ),
+
+    /*
+       Increased from roughly
+       -950 to -1150/-1000.
+
+       This makes fruits travel
+       much higher.
+    */
+
+    vy:
+      rand(
+        -1200,
+        -1000
+      ),
+
+    /*
+       Slightly reduced gravity
+       gives them a longer arc.
+    */
+
+    gravity:
+      rand(
+        1050,
+        1250
+      ),
+
+    size: size,
+
+    emoji:
+      isBomb
+        ? "💣"
+        : fruit.emoji,
+
+    points:
+      isBomb
+        ? 0
+        : fruit.points,
+
+    bomb:
+      isBomb,
+
+    rotation:
+      rand(
+        -0.35,
+        0.35
+      ),
+
+    vr:
+      rand(
+        -2.5,
+        2.5
+      ),
+
+    alive: true
+
+  });
+}
+
+
+/* =====================================================
+   DISTANCE TO LINE
+===================================================== */
+
+function distancePointToSegment(
+  px,
+  py,
+  ax,
+  ay,
+  bx,
+  by
+) {
+
+  const abx =
+    bx - ax;
+
+  const aby =
+    by - ay;
+
+  const apx =
+    px - ax;
+
+  const apy =
+    py - ay;
+
+  const ab2 =
+    abx * abx +
+    aby * aby;
+
+
+  if (ab2 === 0) {
+
+    return Math.hypot(
+      px - ax,
+      py - ay
+    );
+  }
+
+
+  let t =
+    (
+      apx * abx +
+      apy * aby
+    ) /
+    ab2;
+
+
+  t =
+    Math.max(
+      0,
+      Math.min(
+        1,
+        t
+      )
+    );
+
+
+  const closestX =
+    ax + abx * t;
+
+  const closestY =
+    ay + aby * t;
+
+
+  return Math.hypot(
+    px - closestX,
+    py - closestY
+  );
+}
+
+
+/* =====================================================
+   SLICE
+===================================================== */
+
+function sliceBetween(
+  ax,
+  ay,
+  bx,
+  by
+) {
+
+  if (!playing) {
+    return;
+  }
+
+
+  for (
+    const fruit of fruits
+  ) {
+
+    if (!fruit.alive) {
+      continue;
+    }
+
+
+    const distance =
+      distancePointToSegment(
+
+        fruit.x,
+        fruit.y,
+
+        ax,
+        ay,
+
+        bx,
+        by
+
+      );
+
+
+    if (
+      distance <
+      fruit.size * 0.58
+    ) {
+
+      fruit.alive =
+        false;
+
+
+      if (fruit.bomb) {
+
+        lives--;
+
+        combo = 0;
+
+
+        livesEl.textContent =
+          lives;
+
+        comboEl.textContent =
+          combo;
+
+
+        explode(
+          fruit.x,
+          fruit.y,
+          true
+        );
+
+
+        if (
+          lives <= 0
+        ) {
+
+          endGame();
+        }
+
+
+      } else {
+
+        score +=
+          fruit.points +
+          Math.max(
+            0,
+            combo
+          ) * 2;
+
+
+        combo++;
+
+
+        scoreEl.textContent =
+          score;
+
+        comboEl.textContent =
+          combo;
+
+
+        explode(
+          fruit.x,
+          fruit.y,
+          false
+        );
+      }
+    }
+  }
+}
+
+
+/* =====================================================
+   PARTICLES
+===================================================== */
+
+function explode(
+  x,
+  y,
+  bomb
+) {
+
+  const count =
+    bomb
+      ? 30
+      : 18;
+
+
+  for (
+    let i = 0;
+    i < count;
+    i++
+  ) {
+
+    const angle =
+      Math.random() *
+      Math.PI *
+      2;
+
+
+    const speed =
+      rand(
+        80,
+        420
+      );
+
+
+    particles.push({
+
+      x: x,
+
+      y: y,
+
+      vx:
+        Math.cos(angle) *
+        speed,
+
+      vy:
+        Math.sin(angle) *
+        speed,
+
+      life:
+        rand(
+          0.35,
+          0.75
+        ),
+
+      max:
+        0.75,
+
+      size:
+        rand(
+          3,
+          9
+        ),
+
+      bomb:
+        bomb
+
+    });
+  }
+}
+
+
+/* =====================================================
+   DRAW TRAILS
+===================================================== */
+
+function drawTrails() {
+
+  for (
+    const trail of trails
+  ) {
+
+    if (
+      trail.length < 2
+    ) {
+      continue;
+    }
+
+
+    ctx.save();
+
+    ctx.lineCap =
+      "round";
+
+    ctx.lineJoin =
+      "round";
+
+
+    for (
+      let i = 1;
+      i < trail.length;
+      i++
+    ) {
+
+      const a =
+        trail[i - 1];
+
+      const b =
+        trail[i];
+
+
+      const alpha =
+        i /
+        trail.length;
+
+
+      ctx.globalAlpha =
+        alpha * 0.8;
+
+
+      ctx.lineWidth =
+        5 +
+        alpha * 9;
+
+
+      ctx.strokeStyle =
+        "#ffffff";
+
+
+      ctx.shadowBlur =
+        18;
+
+      ctx.shadowColor =
+        "#ffffff";
+
+
+      ctx.beginPath();
+
+
+      ctx.moveTo(
+        a.x,
+        a.y
+      );
+
+
+      ctx.lineTo(
+        b.x,
+        b.y
+      );
+
+
+      ctx.stroke();
+    }
+
+
+    ctx.restore();
+  }
+}
+
+
+/* =====================================================
+   DRAW FINGERS
+===================================================== */
+
+function drawFingers() {
+
+  for (
+    const finger of fingers
+  ) {
+
+    ctx.save();
+
+
+    /*
+       Outer glow.
+    */
+
+    ctx.beginPath();
+
+    ctx.arc(
+      finger.x,
+      finger.y,
+      15,
+      0,
+      Math.PI * 2
+    );
+
+
+    ctx.fillStyle =
+      "rgba(255,255,255,.18)";
+
+
+    ctx.fill();
+
+
+    /*
+       Fingertip.
+    */
+
+    ctx.beginPath();
+
+    ctx.arc(
+      finger.x,
+      finger.y,
+      6,
+      0,
+      Math.PI * 2
+    );
+
+
+    ctx.fillStyle =
+      "#ffffff";
+
+
+    ctx.shadowBlur =
+      15;
+
+    ctx.shadowColor =
+      "#ffffff";
+
+
+    ctx.fill();
+
+
+    ctx.restore();
+  }
+}
+
+
+/* =====================================================
+   DRAW FRUIT
+===================================================== */
+
+function drawFruit(
+  fruit
+) {
+
+  ctx.save();
+
+
+  ctx.translate(
+    fruit.x,
+    fruit.y
+  );
+
+
+  ctx.rotate(
+    fruit.rotation
+  );
+
+
+  ctx.font =
+    `${fruit.size}px "Apple Color Emoji","Segoe UI Emoji",sans-serif`;
+
+
+  ctx.textAlign =
+    "center";
+
+  ctx.textBaseline =
+    "middle";
+
+
+  ctx.shadowBlur =
+    24;
+
+
+  ctx.shadowColor =
+    fruit.bomb
+      ? "#ff2020"
+      : "#ffffff";
+
+
+  /*
+     Dark outline.
+  */
+
+  ctx.lineWidth =
+    10;
+
+  ctx.strokeStyle =
+    "rgba(0,0,0,.9)";
+
+
+  ctx.strokeText(
+    fruit.emoji,
+    0,
+    0
+  );
+
+
+  ctx.fillText(
+    fruit.emoji,
+    0,
+    0
+  );
+
+
+  ctx.restore();
+}
+
+
+/* =====================================================
+   PARTICLES
+===================================================== */
+
+function drawParticles(
+  dt
+) {
+
+  for (
+    const particle of particles
+  ) {
+
+    particle.x +=
+      particle.vx * dt;
+
+    particle.y +=
+      particle.vy * dt;
+
+    particle.vy +=
+      850 * dt;
+
+    particle.life -=
+      dt;
+
+
+    const alpha =
+      Math.max(
+        0,
+        particle.life /
+        particle.max
+      );
+
+
+    ctx.save();
+
+
+    ctx.globalAlpha =
+      alpha;
+
+
+    ctx.fillStyle =
+      particle.bomb
+        ? "#ff3030"
+        : "#ffffff";
+
+
+    ctx.beginPath();
+
+
+    ctx.arc(
+      particle.x,
+      particle.y,
+      particle.size,
+      0,
+      Math.PI * 2
+    );
+
+
+    ctx.fill();
+
+
+    ctx.restore();
+  }
+
+
+  particles =
+    particles.filter(
+      particle =>
+        particle.life > 0
+    );
+}
+
+
+/* =====================================================
+   UPDATE
+===================================================== */
+
+function update(dt) {
+
+  if (!playing) {
+    return;
+  }
+
+
+  spawnTimer +=
+    dt * 1000;
+
+
+  if (
+    spawnTimer >=
+    nextSpawn
+  ) {
+
+    spawnTimer = 0;
+
+
+    nextSpawn =
+      rand(
+        450,
+        800
+      );
+
+
+    spawnFruit();
+
+
+    if (
+      Math.random() < 0.22
+    ) {
+
+      setTimeout(
+        () => {
+
+          if (playing) {
+            spawnFruit();
+          }
+
+        },
+        120
+      );
+    }
+  }
+
+
+  /* --------------------------------
+     FRUIT PHYSICS
+  -------------------------------- */
+
+  for (
+    const fruit of fruits
+  ) {
+
+    if (!fruit.alive) {
+      continue;
+    }
+
+
+    fruit.x +=
+      fruit.vx * dt;
+
+
+    fruit.y +=
+      fruit.vy * dt;
+
+
+    fruit.vy +=
+      fruit.gravity * dt;
+
+
+    fruit.rotation +=
+      fruit.vr * dt;
+
+
+    if (
+      fruit.x < -150 ||
+      fruit.x > W + 150 ||
+      fruit.y > H + 180
+    ) {
+
+      fruit.alive =
+        false;
+
+
+      if (
+        !fruit.bomb &&
+        fruit.y >
+        H + 100
+      ) {
+
+        combo = 0;
+
+        comboEl.textContent =
+          combo;
+      }
+    }
+  }
+
+
+  fruits =
+    fruits.filter(
+      fruit =>
+        fruit.alive
+    );
+
+
+  /* --------------------------------
+     TWO-HAND SLASHING
+  -------------------------------- */
+
+  for (
+    const finger of fingers
+  ) {
+
+    /*
+       Each hand gets its own
+       trail history.
+    */
+
+    if (
+      !trails[finger.hand]
+    ) {
+
+      trails[finger.hand] =
+        [];
+    }
+
+
+    const trail =
+      trails[finger.hand];
+
+
+    const previous =
+      trail.length
+        ? trail[
+            trail.length - 1
+          ]
+        : null;
+
+
+    trail.push({
+
+      x:
+        finger.x,
+
+      y:
+        finger.y
+
+    });
+
+
+    if (
+      trail.length >
+      14
+    ) {
+
+      trail.shift();
+    }
+
+
+    /*
+       Slice along movement.
+    */
+
+    if (previous) {
+
+      sliceBetween(
+
+        previous.x,
+        previous.y,
+
+        finger.x,
+        finger.y
+
+      );
+    }
+  }
+
+
+  /*
+     Clear unused hand trails.
+  */
+
+  for (
+    let i = 0;
+    i < trails.length;
+    i++
+  ) {
+
+    const handStillVisible =
+      fingers.some(
+        finger =>
+          finger.hand === i
+      );
+
+
+    if (
+      !handStillVisible
+    ) {
+
+      trails[i] = [];
+    }
+  }
+}
+
+
+/* =====================================================
+   DRAW
+===================================================== */
+
+function draw(dt) {
+
+  drawCamera();
+
+  drawTrails();
+
+
+  for (
+    const fruit of fruits
+  ) {
+
+    drawFruit(
+      fruit
+    );
+  }
+
+
+  drawParticles(dt);
+
+  drawFingers();
+}
+
+
+/* =====================================================
+   RESET
+===================================================== */
+
+function resetGame() {
+
+  fruits = [];
+
+  particles = [];
+
+  trails = [];
+
+  fingers = [];
+
+
+  score = 0;
+
+  combo = 0;
+
+  lives = 3;
+
+
+  scoreEl.textContent =
+    "0";
+
+  comboEl.textContent =
+    "0";
+
+  livesEl.textContent =
+    "3";
+}
+
+
+/* =====================================================
+   COUNTDOWN
+===================================================== */
+
+async function countdownStart() {
+
+  countdown.style.display =
+    "flex";
+
+
+  for (
+    let number = 3;
+    number >= 1;
+    number--
+  ) {
+
+    countdownText.textContent =
+      number;
+
+
+    await new Promise(
+      resolve =>
+        setTimeout(
+          resolve,
+          700
+        )
+    );
+  }
+
+
+  countdownText.textContent =
+    "GO!";
+
+
+  await new Promise(
+    resolve =>
+      setTimeout(
+        resolve,
+        450
+      )
+  );
+
+
+  countdown.style.display =
+    "none";
+
+
+  playing = true;
+}
+
+
+/* =====================================================
+   GAME OVER
+===================================================== */
+
+function endGame() {
+
+  if (!playing) {
+    return;
+  }
+
+
+  playing = false;
+
+
+  finalScore.textContent =
+    score;
+
+
+  gameOverScreen.style.display =
+    "flex";
+}
+
+
+/* =====================================================
+   CONTINUE
+===================================================== */
+
+async function continueAfterCamera() {
+
+  await setupHandLandmarker();
+
+
+  startScreen.style.display =
+    "none";
+
+
+  resetGame();
+
+
+  await countdownStart();
+}
+
+
+/* =====================================================
+   START BUTTON
+===================================================== */
+
+startButton.onclick =
+  async () => {
+
+    startButton.disabled =
+      true;
+
+    errorEl.textContent =
+      "";
+
+
+    try {
+
+      cameras =
+        await getCameras();
+
+
+      if (
+        cameras.length === 0
+      ) {
+
+        throw new Error(
+          "No camera was found."
+        );
+      }
+
+
+      cameraSelect.innerHTML =
+        "";
+
+
+      cameras.forEach(
+        (
+          device,
+          index
+        ) => {
+
+          const option =
+            document.createElement(
+              "option"
+            );
+
+
+          option.value =
+            device.deviceId;
+
+
+          option.textContent =
+            device.label ||
+            `Camera ${index + 1}`;
+
+
+          cameraSelect.appendChild(
+            option
+          );
+        }
+      );
+
+
+      const best =
+        chooseBestCamera(
+          cameras
+        );
+
+
+      selectedCameraId =
+        best.deviceId;
+
+
+      cameraSelect.value =
+        selectedCameraId;
+
+
+      if (
+        cameras.length > 1
+      ) {
+
+        cameraPanel.style.display =
+          "flex";
+
+
+        startButton.disabled =
+          false;
+
+      } else {
+
+        await startSpecificCamera(
+          selectedCameraId
+        );
+
+
+        await continueAfterCamera();
+      }
+
+
+    } catch (error) {
+
+      console.error(error);
+
+
+      errorEl.textContent =
+        error.message ||
+        "Something went wrong.";
+
+
+      startButton.disabled =
+        false;
+    }
+  };
+
+
+/* =====================================================
+   CAMERA CONFIRM
+===================================================== */
+
+cameraConfirm.onclick =
+  async () => {
+
+    selectedCameraId =
+      cameraSelect.value;
+
+
+    try {
+
+      await startSpecificCamera(
+        selectedCameraId
+      );
+
+
+      cameraPanel.style.display =
+        "none";
+
+
+      await continueAfterCamera();
+
+
+    } catch (error) {
+
+      error2.textContent =
+        error.message;
+    }
+  };
+
+
+/* =====================================================
+   RESTART
+===================================================== */
+
+restartButton.onclick =
+  async () => {
+
+    gameOverScreen.style.display =
+      "none";
+
+
+    resetGame();
+
+
+    await countdownStart();
+  };
+
+
+/* =====================================================
+   MAIN LOOP
+===================================================== */
+
+let previousFrameTime =
+  performance.now();
+
+
+function gameLoop(now) {
+
+  const dt =
+    Math.min(
+      (now -
+        previousFrameTime) /
+        1000,
+
+      0.033
+    );
+
+
+  previousFrameTime =
+    now;
+
+
+  detectHands(now);
+
+  update(dt);
+
+  draw(dt);
+
+
+  requestAnimationFrame(
+    gameLoop
+  );
+}
+
+
+requestAnimationFrame(
+  gameLoop
+);
+
+</script>
+
+</body>
+</html>
